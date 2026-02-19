@@ -13,6 +13,9 @@ import { dashboardRoutes } from './routes/dashboard.routes';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { SchedulerService } from './modules/scheduler/scheduler.service';
+import { testAIConnection } from './modules/analyzer/analyzer.service';
+import { testPOP3Connection } from './modules/pop3/pop3.service';
+import { testConnection as testNotionConnection, ensureCategoryProperty } from './modules/notion/notion.service';
 
 const app = express();
 
@@ -33,6 +36,43 @@ app.use('/api/dashboard', dashboardRoutes);
 // Error handler
 app.use(errorHandler);
 
+// Check connection status of external services
+async function checkServiceStatus(): Promise<void> {
+  logger.info('=== Service Status Check ===');
+
+  const [aiResult, pop3Result, notionResult] = await Promise.allSettled([
+    testAIConnection(),
+    testPOP3Connection(),
+    testNotionConnection(),
+  ]);
+
+  // AI status
+  if (aiResult.status === 'fulfilled') {
+    const ai = aiResult.value;
+    logger.info({ ok: ai.ok, message: ai.message }, `[AI] ${ai.ok ? 'OK' : 'FAIL'}`);
+  } else {
+    logger.error({ error: aiResult.reason }, '[AI] FAIL - exception');
+  }
+
+  // POP3 (Webmail) status
+  if (pop3Result.status === 'fulfilled') {
+    const pop3 = pop3Result.value;
+    logger.info({ ok: pop3.ok, message: pop3.message }, `[Webmail/POP3] ${pop3.ok ? 'OK' : 'FAIL'}`);
+  } else {
+    logger.error({ error: pop3Result.reason }, '[Webmail/POP3] FAIL - exception');
+  }
+
+  // Notion status
+  if (notionResult.status === 'fulfilled') {
+    const notion = notionResult.value;
+    logger.info({ ok: notion.ok, message: notion.message }, `[Notion] ${notion.ok ? 'OK' : 'FAIL'}`);
+  } else {
+    logger.error({ error: notionResult.reason }, '[Notion] FAIL - exception');
+  }
+
+  logger.info('=== Status Check Complete ===');
+}
+
 // Bootstrap
 async function bootstrap() {
   try {
@@ -44,6 +84,13 @@ async function bootstrap() {
 
     app.listen(env.port, () => {
       logger.info(`Server running on port ${env.port}`);
+
+      // Check AI, Webmail, Notion status after server is ready
+      checkServiceStatus()
+        .then(() => ensureCategoryProperty())
+        .catch((err) => {
+          logger.error({ error: (err as Error).message }, 'Status check failed');
+        });
     });
 
     // Graceful shutdown

@@ -1,10 +1,19 @@
 export const DEFAULT_CATEGORIES = [
-  { name: '기능요청', description: '새로운 기능 요청', color: '#3B82F6', sortOrder: 1 },
-  { name: '버그리포트', description: '버그 및 오류 보고', color: '#EF4444', sortOrder: 2 },
-  { name: '개선사항', description: '기존 기능 개선 요청', color: '#F59E0B', sortOrder: 3 },
-  { name: '문의사항', description: '일반 문의 및 질문', color: '#10B981', sortOrder: 4 },
-  { name: '기타', description: '분류되지 않은 항목', color: '#6B7280', sortOrder: 5 },
+  { name: 'Feature Request', description: 'New feature request', color: '#3B82F6', sortOrder: 1 },
+  { name: 'Bug Report', description: 'Bug and error report', color: '#EF4444', sortOrder: 2 },
+  { name: 'Improvement', description: 'Improvement on existing features', color: '#F59E0B', sortOrder: 3 },
+  { name: 'Inquiry', description: 'General inquiry and questions', color: '#10B981', sortOrder: 4 },
+  { name: 'Other', description: 'Uncategorized items', color: '#6B7280', sortOrder: 5 },
 ];
+
+// Notion select color mapping (Notion API uses specific color names)
+export const CATEGORY_NOTION_COLORS: Record<string, string> = {
+  'Feature Request': 'blue',
+  'Bug Report': 'red',
+  'Improvement': 'yellow',
+  'Inquiry': 'green',
+  'Other': 'gray',
+};
 
 export const DEFAULT_SETTINGS = {
   pop3: {

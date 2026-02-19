@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLogs } from '../hooks/useLogs';
 import { useCategories } from '../hooks/useCategories';
 import { LogFilters } from '../components/logs/LogFilters';
@@ -8,6 +9,7 @@ import { LogDetailModal } from '../components/logs/LogDetailModal';
 import type { LogEntry, LogFilterParams } from '../api/client';
 
 export default function Logs() {
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<LogFilterParams>({
     page: 1,
     limit: 20,
@@ -53,6 +55,9 @@ export default function Logs() {
         <LogDetailModal
           log={selectedLog}
           onClose={() => setSelectedLog(null)}
+          onRetrySuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['logs'] });
+          }}
         />
       )}
     </div>

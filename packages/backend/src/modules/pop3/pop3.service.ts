@@ -28,6 +28,9 @@ export async function fetchNewEmails(): Promise<RawEmail[]> {
     throw new Error('POP3 settings not configured');
   }
 
+  // Batch load all processed UIDs in one query (replaces N individual DB queries)
+  const processedUids = processedEmailRepository.getProcessedUidSet();
+
   return withRetry(async () => {
     const client = new Pop3Client({
       host: settings.host,
@@ -46,11 +49,11 @@ export async function fetchNewEmails(): Promise<RawEmail[]> {
         return [];
       }
 
-      // Filter out already-processed UIDs
+      // Filter out already-processed UIDs using in-memory Set (O(1) per check)
       const entries = uidlList as Array<string | string[]>;
       const newUidls = entries.filter((item) => {
         const uid = Array.isArray(item) ? item[1] : item;
-        return !processedEmailRepository.findByUid(uid);
+        return !processedUids.has(uid);
       });
 
       if (newUidls.length === 0) {
@@ -84,6 +87,160 @@ export async function fetchNewEmails(): Promise<RawEmail[]> {
 
       await client.QUIT();
       return emails;
+    } catch (error) {
+      try { await client.QUIT(); } catch { /* ignore quit errors */ }
+      throw error;
+    }
+  });
+}
+
+/**
+ * Fetch only emails received since `sinceDate` by checking headers first (TOP command).
+ * Much faster than fetchNewEmails() when only recent emails are needed.
+ */
+export async function fetchEmailsSince(sinceDate: Date): Promise<RawEmail[]> {
+  const settings = settingsRepository.get('pop3');
+
+  if (!settings.host || !settings.user) {
+    throw new Error('POP3 settings not configured');
+  }
+
+  // Batch load all processed UIDs in one query
+  const processedUids = processedEmailRepository.getProcessedUidSet();
+
+  return withRetry(async () => {
+    const client = new Pop3Client({
+      host: settings.host,
+      port: settings.port,
+      tls: settings.tls,
+      tlsOptions: { rejectUnauthorized: false },
+      user: settings.user,
+      password: settings.password,
+    });
+
+    try {
+      const uidlList = await client.UIDL();
+      if (!Array.isArray(uidlList) || uidlList.length === 0) {
+        await client.QUIT();
+        return [];
+      }
+
+      // Filter out already-processed UIDs using in-memory Set
+      const entries = uidlList as Array<string | string[]>;
+      const newUidls = entries.filter((item) => {
+        const uid = Array.isArray(item) ? item[1] : item;
+        return !processedUids.has(uid);
+      });
+
+      if (newUidls.length === 0) {
+        await client.QUIT();
+        return [];
+      }
+
+      logger.info({ total: newUidls.length }, 'Checking email headers for date filtering...');
+
+      // Phase 1: Check headers with TOP to find emails since sinceDate
+      const matchingEntries: Array<{ msgNum: string; uid: string }> = [];
+
+      for (const entry of newUidls) {
+        const msgNum = Array.isArray(entry) ? entry[0] : entry;
+        const uid = Array.isArray(entry) ? entry[1] : entry;
+        try {
+          const headers = await client.TOP(Number(msgNum), 0);
+          if (typeof headers === 'string') {
+            const dateMatch = headers.match(/^Date:\s*(.+)$/mi);
+            if (dateMatch) {
+              const emailDate = new Date(dateMatch[1].trim());
+              if (!isNaN(emailDate.getTime()) && emailDate >= sinceDate) {
+                matchingEntries.push({ msgNum, uid });
+              }
+            }
+          }
+        } catch {
+          // If TOP fails, skip this email
+        }
+      }
+
+      logger.info({ matching: matchingEntries.length, total: newUidls.length }, 'Date-filtered emails found');
+
+      if (matchingEntries.length === 0) {
+        await client.QUIT();
+        return [];
+      }
+
+      // Phase 2: Only RETR the matching emails
+      const emails: RawEmail[] = [];
+      for (const { msgNum, uid } of matchingEntries) {
+        try {
+          const raw = await client.RETR(Number(msgNum));
+          if (typeof raw === 'string') {
+            const messageIdMatch = raw.match(/^Message-I[Dd]:\s*<?([^>\r\n]+)>?/m);
+            const messageId = messageIdMatch ? messageIdMatch[1].trim() : `uid-${uid}`;
+            emails.push({ uid, messageId, raw });
+          }
+        } catch (error) {
+          logger.error({ uid, error: (error as Error).message }, 'Failed to retrieve email');
+        }
+      }
+
+      await client.QUIT();
+      return emails;
+    } catch (error) {
+      try { await client.QUIT(); } catch { /* ignore quit errors */ }
+      throw error;
+    }
+  });
+}
+
+/**
+ * Fetch a single email by its UID from the POP3 server.
+ * Used for reprocessing failed emails.
+ */
+export async function fetchEmailByUid(targetUid: string): Promise<RawEmail | null> {
+  const settings = settingsRepository.get('pop3');
+
+  if (!settings.host || !settings.user) {
+    throw new Error('POP3 settings not configured');
+  }
+
+  return withRetry(async () => {
+    const client = new Pop3Client({
+      host: settings.host,
+      port: settings.port,
+      tls: settings.tls,
+      tlsOptions: { rejectUnauthorized: false },
+      user: settings.user,
+      password: settings.password,
+    });
+
+    try {
+      const uidlList = await client.UIDL();
+      if (!Array.isArray(uidlList) || uidlList.length === 0) {
+        await client.QUIT();
+        return null;
+      }
+
+      const entries = uidlList as Array<string | string[]>;
+      const match = entries.find((item) => {
+        const uid = Array.isArray(item) ? item[1] : item;
+        return uid === targetUid;
+      });
+
+      if (!match) {
+        await client.QUIT();
+        return null;
+      }
+
+      const msgNum = Array.isArray(match) ? match[0] : match;
+      const raw = await client.RETR(Number(msgNum));
+      await client.QUIT();
+
+      if (typeof raw !== 'string') return null;
+
+      const messageIdMatch = raw.match(/^Message-I[Dd]:\s*<?([^>\r\n]+)>?/m);
+      const messageId = messageIdMatch ? messageIdMatch[1].trim() : `uid-${targetUid}`;
+
+      return { uid: targetUid, messageId, raw };
     } catch (error) {
       try { await client.QUIT(); } catch { /* ignore quit errors */ }
       throw error;

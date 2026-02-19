@@ -4,6 +4,7 @@ import {
   updateSettings,
   testPOP3,
   testNotion,
+  testNotionWrite,
   testAI,
   fetchOllamaModels,
   type Settings,
@@ -75,6 +76,25 @@ export function useTestAI() {
     },
     onError: () => {
       toast.error('AI 연결 테스트 중 오류가 발생했습니다.');
+    },
+  });
+}
+
+export function useTestNotionWrite() {
+  return useMutation({
+    mutationFn: testNotionWrite,
+    onSuccess: (result) => {
+      if (result.ok) {
+        toast.success(`Notion 글 작성 성공!`);
+        if (result.url) {
+          window.open(result.url, '_blank');
+        }
+      } else {
+        toast.error(`Notion 글 작성 실패: ${result.message}`);
+      }
+    },
+    onError: () => {
+      toast.error('Notion 글 작성 테스트 중 오류가 발생했습니다.');
     },
   });
 }

@@ -1,7 +1,10 @@
 import cron from 'node-cron';
 import { settingsRepository } from '../../database/repositories/settings.repository';
-import { processEmails } from '../../pipeline/email-pipeline';
+import { processEmailsSince } from '../../pipeline/email-pipeline';
 import { logger } from '../../utils/logger';
+
+// Initial sinceDate: 2026-02-19 00:00:00 KST
+const INITIAL_SINCE_DATE = new Date('2026-02-19T00:00:00+09:00');
 
 export class SchedulerService {
   private static instance: SchedulerService;
@@ -10,6 +13,7 @@ export class SchedulerService {
   private lastRun: Date | null = null;
   private nextRun: Date | null = null;
   private processing = false;
+  private sinceDate: Date = INITIAL_SINCE_DATE;
 
   private constructor() {}
 
@@ -25,7 +29,10 @@ export class SchedulerService {
     if (settings.enabled) {
       this.start(settings.intervalMinutes);
     }
-    logger.info({ enabled: settings.enabled, interval: settings.intervalMinutes }, 'Scheduler initialized');
+    logger.info(
+      { enabled: settings.enabled, interval: settings.intervalMinutes, sinceDate: this.sinceDate.toISOString() },
+      'Scheduler initialized',
+    );
   }
 
   start(intervalMinutes?: number): void {
@@ -42,12 +49,17 @@ export class SchedulerService {
       }
 
       this.processing = true;
-      this.lastRun = new Date();
+      const tickStart = new Date();
+      const fetchSince = this.sinceDate;
 
       try {
-        logger.info('Scheduler tick: starting email processing');
-        const result = await processEmails();
+        logger.info({ sinceDate: fetchSince.toISOString() }, 'Scheduler tick: fetching emails since');
+        const result = await processEmailsSince(fetchSince);
         logger.info({ result }, 'Scheduler tick: completed');
+
+        // Update sinceDate to this tick's start time for next run
+        this.sinceDate = tickStart;
+        this.lastRun = tickStart;
       } catch (error) {
         logger.error({ error: (error as Error).message }, 'Scheduler tick: error');
       } finally {
@@ -58,7 +70,7 @@ export class SchedulerService {
 
     this.running = true;
     this.computeNextRun(interval);
-    logger.info({ cronExpr, intervalMinutes: interval }, 'Scheduler started');
+    logger.info({ cronExpr, intervalMinutes: interval, sinceDate: this.sinceDate.toISOString() }, 'Scheduler started');
   }
 
   stop(): void {
@@ -71,6 +83,10 @@ export class SchedulerService {
     logger.info('Scheduler stopped');
   }
 
+  getSinceDate(): Date {
+    return this.sinceDate;
+  }
+
   isRunning(): boolean {
     return this.running;
   }
@@ -80,6 +96,7 @@ export class SchedulerService {
     running: boolean;
     lastRun?: string;
     nextRun?: string;
+    sinceDate?: string;
   } {
     const settings = settingsRepository.get('scheduler');
     return {
@@ -87,6 +104,7 @@ export class SchedulerService {
       running: this.running,
       lastRun: this.lastRun?.toISOString(),
       nextRun: this.nextRun?.toISOString(),
+      sinceDate: this.sinceDate.toISOString(),
     };
   }
 

@@ -103,6 +103,43 @@ router.post('/test-ai', asyncHandler(async (_req, res) => {
   res.json({ success: true, data: result });
 }));
 
+// POST /test-notion-write — create a test page in Notion
+router.post('/test-notion-write', asyncHandler(async (_req, res) => {
+  try {
+    const settings = settingsRepository.get('notion');
+    if (!settings.apiKey || !settings.databaseId) {
+      res.json({ success: true, data: { ok: false, message: 'Notion 설정이 없습니다.' } });
+      return;
+    }
+
+    const { Client } = await import('@notionhq/client');
+    const client = new Client({ auth: settings.apiKey });
+
+    const page = await client.pages.create({
+      parent: { database_id: settings.databaseId },
+      properties: {
+        Name: {
+          title: [{ text: { content: '[테스트] Mail-to-Notion 연동 테스트' } }],
+        },
+        '상태': {
+          select: { name: '할 일' },
+        },
+        '날짜': {
+          date: { start: new Date().toISOString().split('T')[0] },
+        },
+        '텍스트': {
+          rich_text: [{ text: { content: '이 페이지는 Mail-to-Notion 시스템의 Notion 연동 테스트로 자동 생성되었습니다. 삭제해도 됩니다.' } }],
+        },
+      },
+    });
+
+    const url = (page as unknown as { url: string }).url ?? `https://notion.so/${page.id.replace(/-/g, '')}`;
+    res.json({ success: true, data: { ok: true, message: `테스트 페이지 생성 완료`, url } });
+  } catch (error) {
+    res.json({ success: true, data: { ok: false, message: `Notion 글 작성 실패: ${(error as Error).message}` } });
+  }
+}));
+
 // GET /ollama-models
 router.get('/ollama-models', asyncHandler(async (_req, res) => {
   try {

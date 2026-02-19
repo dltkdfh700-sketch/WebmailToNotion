@@ -1,5 +1,5 @@
-import { Play, Loader2 } from 'lucide-react';
-import { useDashboard, useTriggerProcessing } from '../hooks/useDashboard';
+import { Play, Loader2, Mail } from 'lucide-react';
+import { useDashboard, useTriggerProcessing, useFetchTodayEmails } from '../hooks/useDashboard';
 import { StatsCards } from '../components/dashboard/StatsCards';
 import { CategoryChart } from '../components/dashboard/CategoryChart';
 import { RecentList } from '../components/dashboard/RecentList';
@@ -7,6 +7,7 @@ import { RecentList } from '../components/dashboard/RecentList';
 export default function Dashboard() {
   const { data: stats, isLoading, isError } = useDashboard();
   const trigger = useTriggerProcessing();
+  const fetchToday = useFetchTodayEmails();
 
   if (isLoading) {
     return (
@@ -28,7 +29,19 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Action bar */}
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-3">
+        <button
+          onClick={() => fetchToday.mutate()}
+          disabled={fetchToday.isPending}
+          className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 disabled:opacity-50 transition-colors"
+        >
+          {fetchToday.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Mail className="h-4 w-4" />
+          )}
+          오늘 메일 전부 가져오기
+        </button>
         <button
           onClick={() => trigger.mutate()}
           disabled={trigger.isPending}

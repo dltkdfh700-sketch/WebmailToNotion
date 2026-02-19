@@ -151,6 +151,11 @@ export async function testAI(): Promise<ConnectionTestResult> {
   return data.data!;
 }
 
+export async function testNotionWrite(): Promise<ConnectionTestResult & { url?: string }> {
+  const { data } = await api.post<ApiResponse<ConnectionTestResult & { url?: string }>>('/settings/test-notion-write');
+  return data.data!;
+}
+
 export async function fetchOllamaModels(host?: string): Promise<string[]> {
   const params = host ? { host } : {};
   const { data } = await api.get<ApiResponse<string[]>>('/settings/ollama-models', { params });
@@ -162,7 +167,25 @@ export async function fetchLogs(params: LogFilterParams): Promise<PaginatedRespo
   return data;
 }
 
+export async function retryLog(id: number): Promise<{ success: boolean; message: string; notionPageUrl?: string }> {
+  const { data } = await api.post<ApiResponse<{ success: boolean; message: string; notionPageUrl?: string }>>(`/logs/${id}/retry`);
+  return data.data!;
+}
+
 export async function triggerProcessing(): Promise<{ processed: number; errors: number }> {
   const { data } = await api.post<ApiResponse<{ processed: number; errors: number }>>('/process/trigger');
+  return data.data!;
+}
+
+export interface FetchTodayResult {
+  total: number;
+  todayCount: number;
+  written: number;
+  errors: number;
+  message: string;
+}
+
+export async function fetchTodayEmails(): Promise<FetchTodayResult> {
+  const { data } = await api.post<ApiResponse<FetchTodayResult>>('/trigger/fetch-today');
   return data.data!;
 }

@@ -1,5 +1,6 @@
 import { Client } from '@notionhq/client';
 import type { ParsedEmail, AnalysisResult, ConnectionTestResult } from '@mail-to-notion/shared';
+import { DEFAULT_CATEGORIES, CATEGORY_NOTION_COLORS } from '@mail-to-notion/shared';
 import { settingsRepository } from '../../database/repositories/settings.repository';
 import { logger } from '../../utils/logger';
 
@@ -26,39 +27,40 @@ export async function createPage(
 ): Promise<{ id: string; url: string }> {
   const { client, databaseId } = getClient();
 
-  // Create the database page with properties
+  // Build text content with analysis details for 텍스트 field
+  const textParts = [
+    `[요약] ${analysis.summary}`,
+    ``,
+    `우선순위: ${analysis.priority}`,
+    `노력: ${analysis.estimatedEffort}`,
+    `보낸이: ${email.from}`,
+    ``,
+    `[주요 요구사항]`,
+    ...analysis.keyRequirements.map((r) => `• ${r}`),
+    ``,
+    `[태그] ${analysis.tags.join(', ')}`,
+    `[판단 근거] ${analysis.reasoning}`,
+  ];
+  const textContent = textParts.join('\n').substring(0, 2000);
+
+  // Create the database page with actual Notion DB properties
   const page = await client.pages.create({
     parent: { database_id: databaseId },
     properties: {
-      Title: {
-        title: [{ text: { content: analysis.title } }],
+      Name: {
+        title: [{ text: { content: analysis.title.substring(0, 2000) } }],
       },
       Category: {
         select: { name: analysis.category },
       },
-      Priority: {
-        select: { name: analysis.priority },
-      },
-      Status: {
+      '상태': {
         select: { name: '신규' },
       },
-      EstimatedEffort: {
-        select: { name: analysis.estimatedEffort },
+      '날짜': {
+        date: { start: email.date.toISOString().split('T')[0] },
       },
-      'Source Email': {
-        rich_text: [{ text: { content: email.subject.substring(0, 2000) } }],
-      },
-      Sender: {
-        rich_text: [{ text: { content: email.from.substring(0, 2000) } }],
-      },
-      'Date Received': {
-        date: { start: email.date.toISOString() },
-      },
-      'Date Processed': {
-        date: { start: new Date().toISOString() },
-      },
-      Tags: {
-        multi_select: analysis.tags.slice(0, 10).map((tag) => ({ name: tag.substring(0, 100) })),
+      '텍스트': {
+        rich_text: [{ text: { content: textContent } }],
       },
     },
   });
@@ -142,6 +144,42 @@ export async function createPage(
   logger.info({ pageId: page.id, title: analysis.title }, 'Notion page created');
 
   return { id: page.id, url };
+}
+
+/**
+ * Ensure the "Category" select property exists in the Notion database.
+ * If not, create it with all default category options.
+ */
+export async function ensureCategoryProperty(): Promise<void> {
+  try {
+    const { client, databaseId } = getClient();
+    const db = await client.databases.retrieve({ database_id: databaseId });
+    const properties = (db as unknown as { properties: Record<string, { type: string }> }).properties;
+
+    if (properties['Category']) {
+      logger.info('Notion "Category" property already exists');
+      return;
+    }
+
+    // Add Category select property
+    const options = DEFAULT_CATEGORIES.map((cat) => ({
+      name: cat.name,
+      color: (CATEGORY_NOTION_COLORS[cat.name] || 'gray') as 'blue' | 'red' | 'yellow' | 'green' | 'gray',
+    }));
+
+    await client.databases.update({
+      database_id: databaseId,
+      properties: {
+        Category: {
+          select: { options },
+        },
+      },
+    });
+
+    logger.info({ categories: DEFAULT_CATEGORIES.map((c) => c.name) }, 'Notion "Category" property created');
+  } catch (error) {
+    logger.warn({ error: (error as Error).message }, 'Failed to ensure Notion Category property');
+  }
 }
 
 export async function testConnection(): Promise<ConnectionTestResult> {

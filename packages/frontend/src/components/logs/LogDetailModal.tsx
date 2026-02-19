@@ -1,9 +1,12 @@
-import { X, ExternalLink } from 'lucide-react';
+import { useState } from 'react';
+import { X, ExternalLink, RotateCw, Loader2 } from 'lucide-react';
 import type { LogEntry } from '../../api/client';
+import { retryLog } from '../../api/client';
 
 interface LogDetailModalProps {
   log: LogEntry;
   onClose: () => void;
+  onRetrySuccess?: () => void;
 }
 
 function StatusBadge({ status }: { status: LogEntry['status'] }) {
@@ -33,7 +36,27 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function LogDetailModal({ log, onClose }: LogDetailModalProps) {
+export function LogDetailModal({ log, onClose, onRetrySuccess }: LogDetailModalProps) {
+  const [retrying, setRetrying] = useState(false);
+  const [retryResult, setRetryResult] = useState<{ success: boolean; message: string; notionPageUrl?: string } | null>(null);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    setRetryResult(null);
+    try {
+      const result = await retryLog(log.id);
+      setRetryResult(result);
+      onRetrySuccess?.();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '재처리에 실패했습니다.';
+      // Extract server error message if available
+      const axiosErr = error as { response?: { data?: { error?: string } } };
+      setRetryResult({ success: false, message: axiosErr.response?.data?.error ?? msg });
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -91,16 +114,58 @@ export function LogDetailModal({ log, onClose }: LogDetailModalProps) {
               </Row>
             )}
           </dl>
+
+          {/* Retry result message */}
+          {retryResult && (
+            <div className={`mt-4 rounded-lg p-3 text-sm ${
+              retryResult.success
+                ? 'bg-green-50 text-green-700 border border-green-200'
+                : 'bg-red-50 text-red-700 border border-red-200'
+            }`}>
+              <p>{retryResult.message}</p>
+              {retryResult.notionPageUrl && (
+                <a
+                  href={retryResult.notionPageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 text-blue-600 hover:underline"
+                >
+                  Notion 페이지 열기
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="border-t border-slate-200 px-6 py-4">
+        <div className="flex items-center justify-between border-t border-slate-200 px-6 py-4">
           <button
             onClick={onClose}
             className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
           >
             닫기
           </button>
+
+          {log.status === 'error' && !retryResult?.success && (
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {retrying ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  재처리 중...
+                </>
+              ) : (
+                <>
+                  <RotateCw className="h-4 w-4" />
+                  재처리
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -55,6 +55,49 @@ export interface CreateProcessedEmailInput {
 }
 
 export const processedEmailRepository = {
+  findById(id: number): LogEntry | undefined {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM processed_emails WHERE id = ?').get(id) as ProcessedEmailRow | undefined;
+    return row ? toLogEntry(row) : undefined;
+  },
+
+  deleteById(id: number): boolean {
+    const db = getDb();
+    const result = db.prepare('DELETE FROM processed_emails WHERE id = ?').run(id);
+    return result.changes > 0;
+  },
+
+  updateStatus(id: number, data: Partial<CreateProcessedEmailInput>): LogEntry | undefined {
+    const db = getDb();
+    const fields: string[] = [];
+    const params: unknown[] = [];
+
+    if ('status' in data) { fields.push('status = ?'); params.push(data.status ?? null); }
+    if ('fromAddress' in data) { fields.push('from_address = ?'); params.push(data.fromAddress ?? null); }
+    if ('subject' in data) { fields.push('subject = ?'); params.push(data.subject ?? null); }
+    if ('category' in data) { fields.push('category = ?'); params.push(data.category ?? null); }
+    if ('priority' in data) { fields.push('priority = ?'); params.push(data.priority ?? null); }
+    if ('notionPageId' in data) { fields.push('notion_page_id = ?'); params.push(data.notionPageId ?? null); }
+    if ('notionPageUrl' in data) { fields.push('notion_page_url = ?'); params.push(data.notionPageUrl ?? null); }
+    if ('errorMessage' in data) { fields.push('error_message = ?'); params.push(data.errorMessage ?? null); }
+    if ('aiProvider' in data) { fields.push('ai_provider = ?'); params.push(data.aiProvider ?? null); }
+    if ('processingTimeMs' in data) { fields.push('processing_time_ms = ?'); params.push(data.processingTimeMs ?? null); }
+    if ('rawAnalysis' in data) { fields.push('raw_analysis = ?'); params.push(data.rawAnalysis ?? null); }
+
+    if (fields.length === 0) return this.findById(id);
+
+    params.push(id);
+    db.prepare(`UPDATE processed_emails SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    return this.findById(id);
+  },
+
+  /** Load all processed UIDs in one query for batch dedup */
+  getProcessedUidSet(): Set<string> {
+    const db = getDb();
+    const rows = db.prepare('SELECT email_uid FROM processed_emails').all() as { email_uid: string }[];
+    return new Set(rows.map((r) => r.email_uid));
+  },
+
   create(data: CreateProcessedEmailInput): LogEntry {
     const db = getDb();
     const result = db.prepare(
