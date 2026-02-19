@@ -1,0 +1,21 @@
+{
+  "name": "mail-to-notion",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/shared",
+    "packages/backend",
+    "packages/frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @mail-to-notion/backend\" \"npm run dev -w @mail-to-notion/frontend\"",
+    "build": "npm run build -w @mail-to-notion/shared && npm run build -w @mail-to-notion/backend && npm run build -w @mail-to-notion/frontend",
+    "build:shared": "npm run build -w @mail-to-notion/shared",
+    "dev:backend": "npm run dev -w @mail-to-notion/backend",
+    "dev:frontend": "npm run dev -w @mail-to-notion/frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.0"
+  }
+}
