@@ -12,7 +12,10 @@
     "build": "npm run build -w @mail-to-notion/shared && npm run build -w @mail-to-notion/backend && npm run build -w @mail-to-notion/frontend",
     "build:shared": "npm run build -w @mail-to-notion/shared",
     "dev:backend": "npm run dev -w @mail-to-notion/backend",
-    "dev:frontend": "npm run dev -w @mail-to-notion/frontend"
+    "dev:frontend": "npm run dev -w @mail-to-notion/frontend",
+    "start": "node packages/backend/dist/index.js",
+    "start:pm2": "pm2 start ecosystem.config.cjs",
+    "stop:pm2": "pm2 stop mail-to-notion"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

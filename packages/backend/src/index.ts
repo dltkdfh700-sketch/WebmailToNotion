@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
+import fs from 'fs';
 import { env } from './config/env';
 import { initDatabase } from './database/schema';
 import { logger } from './utils/logger';
@@ -19,9 +21,16 @@ import { testConnection as testNotionConnection, ensureCategoryProperty } from '
 
 const app = express();
 
+// Check if frontend dist exists (production mode: serve static files)
+const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');
+const serveFrontend = fs.existsSync(frontendDistPath);
+
 // Middleware
-app.use(helmet());
-app.use(cors({ origin: env.frontendUrl, credentials: true }));
+app.use(helmet({ contentSecurityPolicy: false }));
+if (!serveFrontend) {
+  // Development mode: frontend runs on separate port, CORS needed
+  app.use(cors({ origin: env.frontendUrl, credentials: true }));
+}
 app.use(express.json());
 app.use(requestLogger);
 
@@ -32,6 +41,21 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/trigger', triggerRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+
+// Serve frontend static files (production)
+if (serveFrontend) {
+  app.use(express.static(frontendDistPath));
+
+  // SPA fallback: non-API GET requests → index.html
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+
+  logger.info({ path: frontendDistPath }, 'Serving frontend static files');
+}
 
 // Error handler
 app.use(errorHandler);
