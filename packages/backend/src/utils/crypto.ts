@@ -1,16 +1,37 @@
 import crypto from 'crypto';
+import path from 'path';
+import fs from 'fs';
 import { env } from '../config/env';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 
+const KEY_FILE_PATH = path.resolve(__dirname, '../../../../data/encryption.key');
+
 function getKey(): Buffer {
+  // 1. Use env variable if set
   const hex = env.encryptionKey;
-  if (!hex || hex.length !== 64) {
-    throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+  if (hex && hex.length === 64) {
+    return Buffer.from(hex, 'hex');
   }
-  return Buffer.from(hex, 'hex');
+
+  // 2. Read from key file if exists
+  if (fs.existsSync(KEY_FILE_PATH)) {
+    const stored = fs.readFileSync(KEY_FILE_PATH, 'utf8').trim();
+    if (stored.length === 64) {
+      return Buffer.from(stored, 'hex');
+    }
+  }
+
+  // 3. Auto-generate and save
+  const dataDir = path.dirname(KEY_FILE_PATH);
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  const newKey = crypto.randomBytes(32).toString('hex');
+  fs.writeFileSync(KEY_FILE_PATH, newKey, 'utf8');
+  return Buffer.from(newKey, 'hex');
 }
 
 export function encrypt(plaintext: string): string {
