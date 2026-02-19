@@ -1,5 +1,5 @@
-# mail-to-notion Windows 서비스 등록 스크립트
-# 관리자 권한 PowerShell에서 실행: powershell -ExecutionPolicy Bypass -File scripts/setup-service.ps1
+# mail-to-notion Windows Service Setup Script
+# Run in Administrator PowerShell: powershell -ExecutionPolicy Bypass -File scripts/setup-service.ps1
 
 $ErrorActionPreference = "Stop"
 
@@ -7,71 +7,71 @@ function Write-Step($step, $msg) {
     Write-Host "`n[$step] $msg" -ForegroundColor Cyan
 }
 
-# 관리자 권한 확인
+# Check administrator privileges
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Write-Host "[오류] 관리자 권한이 필요합니다. PowerShell을 관리자로 실행하세요." -ForegroundColor Red
+    Write-Host "ERROR: Administrator privileges required. Run PowerShell as Administrator." -ForegroundColor Red
     exit 1
 }
 
-# 프로젝트 루트로 이동
+# Navigate to project root
 $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $projectRoot
-Write-Host "프로젝트 경로: $projectRoot"
+Write-Host "Project path: $projectRoot"
 
-# 1. pm2 전역 설치 확인
-Write-Step 1 "pm2 전역 설치 확인"
+# 1. Check pm2 global installation
+Write-Step 1 "Checking pm2 global installation"
 $pm2 = Get-Command pm2 -ErrorAction SilentlyContinue
 if (-not $pm2) {
-    Write-Host "  pm2가 없습니다. 설치 중..."
+    Write-Host "  pm2 not found. Installing..."
     npm install -g pm2
-    if ($LASTEXITCODE -ne 0) { Write-Host "[오류] pm2 설치 실패" -ForegroundColor Red; exit 1 }
-    Write-Host "  pm2 설치 완료" -ForegroundColor Green
+    if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: pm2 installation failed" -ForegroundColor Red; exit 1 }
+    Write-Host "  pm2 installed successfully" -ForegroundColor Green
 } else {
-    Write-Host "  pm2 이미 설치됨: $($pm2.Source)" -ForegroundColor Green
+    Write-Host "  pm2 already installed: $($pm2.Source)" -ForegroundColor Green
 }
 
-# 2. pm2로 앱 시작
+# 2. Start apps with pm2
 Write-Step 2 "pm2 start ecosystem.config.cjs"
 pm2 start ecosystem.config.cjs
-if ($LASTEXITCODE -ne 0) { Write-Host "[오류] pm2 start 실패" -ForegroundColor Red; exit 1 }
-Write-Host "  앱 시작 완료" -ForegroundColor Green
+if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: pm2 start failed" -ForegroundColor Red; exit 1 }
+Write-Host "  Apps started successfully" -ForegroundColor Green
 
-# 3. pm2-windows-startup 전역 설치
-Write-Step 3 "pm2-windows-startup 전역 설치"
+# 3. Install pm2-windows-startup
+Write-Step 3 "Installing pm2-windows-startup"
 $pmStartup = Get-Command pm2-startup -ErrorAction SilentlyContinue
 if (-not $pmStartup) {
-    Write-Host "  pm2-windows-startup 설치 중..."
+    Write-Host "  Installing pm2-windows-startup..."
     npm install -g pm2-windows-startup
-    if ($LASTEXITCODE -ne 0) { Write-Host "[오류] pm2-windows-startup 설치 실패" -ForegroundColor Red; exit 1 }
-    Write-Host "  설치 완료" -ForegroundColor Green
+    if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: pm2-windows-startup installation failed" -ForegroundColor Red; exit 1 }
+    Write-Host "  Installed successfully" -ForegroundColor Green
 } else {
-    Write-Host "  pm2-windows-startup 이미 설치됨" -ForegroundColor Green
+    Write-Host "  pm2-windows-startup already installed" -ForegroundColor Green
 }
 
-# 4. Windows 서비스 등록
-Write-Step 4 "pm2-startup install (Windows 서비스 등록)"
+# 4. Register Windows service
+Write-Step 4 "pm2-startup install (Register Windows service)"
 pm2-startup install
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[경고] pm2-startup install 실패. 이미 등록되어 있을 수 있습니다." -ForegroundColor Yellow
+    Write-Host "WARNING: pm2-startup install failed. It may already be registered." -ForegroundColor Yellow
 } else {
-    Write-Host "  서비스 등록 완료" -ForegroundColor Green
+    Write-Host "  Service registered successfully" -ForegroundColor Green
 }
 
-# 5. pm2 save
-Write-Step 5 "pm2 save (프로세스 목록 저장)"
+# 5. Save pm2 process list
+Write-Step 5 "pm2 save (Save process list)"
 pm2 save
-if ($LASTEXITCODE -ne 0) { Write-Host "[오류] pm2 save 실패" -ForegroundColor Red; exit 1 }
-Write-Host "  저장 완료" -ForegroundColor Green
+if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: pm2 save failed" -ForegroundColor Red; exit 1 }
+Write-Host "  Saved successfully" -ForegroundColor Green
 
-# 완료
+# Done
 Write-Host "`n========================================" -ForegroundColor Green
-Write-Host " Windows 서비스 등록 완료!" -ForegroundColor Green
-Write-Host " - mail-to-notion: 백엔드 서버" -ForegroundColor White
-Write-Host " - mail-to-notion-watchdog: 헬스체크 워치독" -ForegroundColor White
-Write-Host " - Windows 부팅 시 자동 시작됩니다" -ForegroundColor White
+Write-Host " Windows Service Setup Complete!" -ForegroundColor Green
+Write-Host " - mail-to-notion: Backend server" -ForegroundColor White
+Write-Host " - mail-to-notion-watchdog: Health check watchdog" -ForegroundColor White
+Write-Host " - Auto-start on Windows boot enabled" -ForegroundColor White
 Write-Host "========================================" -ForegroundColor Green
 
-Write-Host "`n상태 확인: pm2 status"
-Write-Host "로그 확인: pm2 logs"
-Write-Host "워치독 로그: type logs\watchdog.log"
+Write-Host "`nCheck status: pm2 status"
+Write-Host "View logs: pm2 logs"
+Write-Host "Watchdog log: type logs\watchdog.log"
